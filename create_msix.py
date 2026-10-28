@@ -100,7 +100,7 @@ manifest_text = manifest_text.replace("[LTSORNOT]", LTSORNOT)
 manifest_text = manifest_text.replace("[PACKAGETYPE]", PACKAGETYPE)
 (content_folder / "AppxManifest.xml").write_text(manifest_text)
 
-output_msix = working_dir / f"Bforartists_{version}.msix"
+output_msix = working_dir / f"Bforgamedevs_{version}.msix"
 
 
 msix_command = [

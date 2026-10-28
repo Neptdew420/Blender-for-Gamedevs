@@ -105,7 +105,7 @@ make.bat release
 # Or if you configured CMake manually with Ninja:
 ninja install
 ```
-Building compiles both the main `bforartists.exe` editor and the standalone `blenderplayer.exe` runtime.
+Building compiles both the main `Bforgamedevs.exe` editor and the standalone `blenderplayer.exe` runtime.
 
 > **Note**: Nightly automated CI builds are primarily for testing compiler health and may lack proprietary codecs, CUDA, or OptiX. For daily driver builds, refer to official release downloads.
 

@@ -354,6 +354,7 @@ if(WITH_PYTHON_MODULE)
 
 else()
   add_executable(bforartists ${EXETYPE} ${SRC})
+  set_target_properties(bforartists PROPERTIES OUTPUT_NAME "Bforgamedevs")
   if(WITH_CPU_CHECK)
     # blender_cpu_check *NEEDS* to be linked first, there can be no exceptions
     # to this, this is to ensure this will be the first code to run once the
@@ -365,6 +366,7 @@ else()
       blender_launcher_win32.c
       ${CMAKE_SOURCE_DIR}/release/windows/icons/winblender.rc
     )
+    set_target_properties(bforartists-launcher PROPERTIES OUTPUT_NAME "Bforgamedevs-launcher")
     if(NOT WITH_WINDOWS_EXTERNAL_MANIFEST)
       target_sources(bforartists-launcher PRIVATE
         ${CMAKE_BINARY_DIR}/bforartists.exe.manifest
@@ -827,7 +829,7 @@ if(UNIX AND NOT APPLE)
 
     # none of the other files are needed currently
   elseif(WITH_INSTALL_PORTABLE)
-    set(BLENDER_BIN "bforartists")
+    set(BLENDER_BIN "Bforgamedevs")
     install(
       TARGETS bforartists
       DESTINATION "."
@@ -867,7 +869,7 @@ if(UNIX AND NOT APPLE)
     endif()
   else()
     # main blender binary
-    set(BLENDER_BIN "bin/bforartists")
+    set(BLENDER_BIN "bin/Bforgamedevs")
     install(
       TARGETS bforartists
       DESTINATION "./bin"
@@ -1247,14 +1249,14 @@ elseif(WIN32)
       install(
         FILES ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/bforartists_public.pdb
         DESTINATION "."
-        RENAME bforartists.pdb
+        RENAME Bforgamedevs.pdb
         CONFIGURATIONS Release
       )
     else()
       install(
         FILES $<TARGET_PDB_FILE:bforartists>
         DESTINATION "."
-        RENAME bforartists.pdb
+        RENAME Bforgamedevs.pdb
         CONFIGURATIONS Release
       )
     endif()
@@ -1762,7 +1764,7 @@ elseif(WIN32)
 elseif(APPLE)
   if(NOT WITH_PYTHON_MODULE)
     # Uppercase name for app bundle.
-    set_target_properties(bforartists PROPERTIES OUTPUT_NAME Bforartists)
+    set_target_properties(bforartists PROPERTIES OUTPUT_NAME Bforgamedevs)
   endif()
 
   set(OSX_APP_SOURCEDIR ${CMAKE_SOURCE_DIR}/release/darwin/Bforartists.app)
@@ -1813,7 +1815,7 @@ elseif(APPLE)
     COMMAND SetFile -d ${SETFILE_DATE} -m ${SETFILE_DATE} ${EXECUTABLE_OUTPUT_PATH}/Bforartists.app
   )
 
-  set(BLENDER_BIN "bin/bforartists")
+  set(BLENDER_BIN "bin/Bforgamedevs")
   install(
     TARGETS bforartists
     DESTINATION "."
@@ -2132,7 +2134,7 @@ endif()
 if(WIN32)
   set_target_properties(bforartists PROPERTIES VS_GLOBAL_VcpkgEnabled "false")
   set_target_properties(bforartists PROPERTIES
-    PDB_NAME "bforartists_private"
+    PDB_NAME "Bforgamedevs_private"
     PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
   )
   # If compiling with clang-cl we skip PDBSTRIPPED.
@@ -2145,12 +2147,12 @@ if(WIN32)
     if(CMAKE_BUILD_TYPE)
       set_property(
         TARGET bforartists APPEND_STRING PROPERTY LINK_FLAGS_RELEASE
-        " /PDBSTRIPPED:${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/bforartists_public.pdb"
+        " /PDBSTRIPPED:${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/Bforgamedevs_public.pdb"
       )
     else()
       set_property(
         TARGET bforartists APPEND_STRING PROPERTY LINK_FLAGS_RELEASE
-        " /PDBSTRIPPED:${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bforartists_public.pdb"
+        " /PDBSTRIPPED:${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/Bforgamedevs_public.pdb"
       )
     endif()
   endif()
@@ -2160,7 +2162,7 @@ endif()
 # Setup launcher
 
 if(WIN32 AND NOT WITH_PYTHON_MODULE)
-  set(BLENDER_BIN "bforartists.exe")
+  set(BLENDER_BIN "Bforgamedevs.exe")
   install(
     TARGETS bforartists bforartists-launcher
     COMPONENT Bforartists

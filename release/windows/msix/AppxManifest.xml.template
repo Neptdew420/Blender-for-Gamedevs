@@ -19,7 +19,7 @@
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
   <Applications>
-    <Application Id="BFORARTISTS" Executable="Bforartists\bforartists-launcher.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="BFORARTISTS" Executable="Bforartists\Bforgamedevs-launcher.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
           BackgroundColor="transparent"
           DisplayName="Bforartists [VERSION]"
@@ -54,9 +54,9 @@
         <uap3:Extension Category="windows.protocol">
           <uap3:Protocol Name="bforartists" Parameters="&quot;%1&quot;" />
         </uap3:Extension>
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="Bforartists\bforartists-launcher.exe" EntryPoint="Windows.FullTrustApplication">
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="Bforartists\Bforgamedevs-launcher.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="bforartists-launcher.exe" />
+            <desktop:ExecutionAlias Alias="Bforgamedevs-launcher.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
       </Extensions>

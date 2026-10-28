@@ -5,6 +5,10 @@ if EXIST "%BLENDER_BIN%" (
 
 REM Check the build folder next, if ninja was used there will be no
 REM debug/release folder
+set BLENDER_BIN=%BUILD_DIR%\bin\Bforgamedevs.exe
+if EXIST "%BLENDER_BIN%" (
+    goto detect_blender_done
+)
 set BLENDER_BIN=%BUILD_DIR%\bin\bforartists.exe
 if EXIST "%BLENDER_BIN%" (
     goto detect_blender_done
@@ -15,6 +19,10 @@ if EXIST "%BLENDER_BIN%" (
 )
 
 REM Check the release folder next
+set BLENDER_BIN=%BUILD_DIR%\bin\release\Bforgamedevs.exe
+if EXIST "%BLENDER_BIN%" (
+    goto detect_blender_done
+)
 set BLENDER_BIN=%BUILD_DIR%\bin\release\bforartists.exe
 if EXIST "%BLENDER_BIN%" (
     goto detect_blender_done
@@ -25,6 +33,10 @@ if EXIST "%BLENDER_BIN%" (
 )
 
 REM Check the debug folder next
+set BLENDER_BIN=%BUILD_DIR%\bin\debug\Bforgamedevs.exe
+if EXIST "%BLENDER_BIN%" (
+    goto detect_blender_done
+)
 set BLENDER_BIN=%BUILD_DIR%\bin\debug\bforartists.exe
 if EXIST "%BLENDER_BIN%" (
     goto detect_blender_done

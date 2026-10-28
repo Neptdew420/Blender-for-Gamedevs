@@ -98,8 +98,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     return -1;
   }
 
-  /* Add blender.exe to path, resulting in the full path to the blender executable. */
-  if (PathCchCombine(path, MAX_PATH, path, L"bforartists.exe") != S_OK) {
+  /* Add Bforgamedevs.exe to path, resulting in the full path to the executable. */
+  if (PathCchCombine(path, MAX_PATH, path, L"Bforgamedevs.exe") != S_OK) {
     return -1;
   }
 

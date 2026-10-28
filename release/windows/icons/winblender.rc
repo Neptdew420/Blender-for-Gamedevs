@@ -27,7 +27,7 @@ BEGIN
       VALUE "CompanyName", "Blender for Gamedevs"
       VALUE "FileDescription", "Blender for Gamedevs"
       VALUE "LegalCopyright", "GPLv3 (Blender for Gamedevs)"
-      VALUE "OriginalFilename", "bforartists.exe"
+      VALUE "OriginalFilename", "Bforgamedevs.exe"
       VALUE "ProductName", "Blender for Gamedevs"
     END
   END

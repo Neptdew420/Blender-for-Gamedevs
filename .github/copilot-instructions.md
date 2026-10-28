@@ -112,7 +112,7 @@ Developers must distinguish between the two separate execution environments:
 ## 5. Build System & Developer Workflows
 
 Building produces two primary executables:
-1. `bforartists.exe` — The 3D creation editor with embedded game playtesting.
+1. `Bforgamedevs.exe` — The 3D creation editor with embedded game playtesting.
 2. `blenderplayer.exe` — The standalone game distribution runner.
 
 ### Windows (Primary / Tested Platform)
