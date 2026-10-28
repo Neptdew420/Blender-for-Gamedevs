@@ -1,0 +1,8 @@
+#!/bin/bash
+# Software OpenGL
+export LIBGL_ALWAYS_SOFTWARE=1
+export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+export MESA_GL_VERSION_OVERRIDE=4.5COMPAT
+
+# Run Bforartists
+./bforartists "$@"

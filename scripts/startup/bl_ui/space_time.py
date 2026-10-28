@@ -1,0 +1,590 @@
+# SPDX-FileCopyrightText: 2009-2023 Blender Authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+import bpy
+from bpy.types import Menu, Panel
+from bpy.app.translations import (
+    pgettext_n as n_,
+    contexts as i18n_contexts,
+)
+
+import addon_utils  # bfa import
+# BFA - Added icons and floated properties left
+
+
+class TIME_PT_playhead_snapping(Panel):
+    bl_space_type = "DOPESHEET_EDITOR"
+    bl_region_type = "HEADER"
+    bl_label = "Playhead"
+    bl_ui_units_x = 12
+
+    @classmethod
+    def poll(cls, context):
+        del context
+        return True
+
+    def draw(self, context):
+        tool_settings = context.tool_settings
+        layout = self.layout
+        col = layout.column()
+        col.use_property_split = True
+        col.use_property_decorate = False
+
+        col.prop(tool_settings, "playhead_snap_distance", text="Distance")
+        col.prop(tool_settings, "snap_playhead_element", text="Snap to", expand=True)
+        col.separator()
+
+        if "FRAME" in tool_settings.snap_playhead_element:
+            col.prop(tool_settings, "snap_playhead_frame_step", text="Frame")
+        if "SECOND" in tool_settings.snap_playhead_element:
+            col.prop(tool_settings, "snap_playhead_second_step", text="Second")
+
+
+def playback_controls(layout, context):
+    st = context.space_data
+    is_sequencer = st.type == 'SEQUENCE_EDITOR'
+    is_timeline = st.type == 'DOPESHEET_EDITOR' and st.mode == 'TIMELINE'  # BFA
+    is_nla = st.type == 'NLA_EDITOR'  # BFA
+
+    scene = context.scene if not is_sequencer else context.sequencer_scene
+    tool_settings = scene.tool_settings if scene else None
+    screen = context.screen
+
+    if not scene:
+        return
+
+    ### Left
+
+    # BFA - moved the playback and keying panels to the right, for consistency
+
+    # BFA - exposed to top sequencer header, where contextually relevant, make sure 3D Sequencer is enabled
+    if is_sequencer and not addon_utils.check("bfa_3Dsequencer")[0]:
+        layout.prop(context.workspace, "use_scene_time_sync", text="Sync Scene Time")
+
+    ### Center
+    layout.separator_spacer()
+    # BFA - moved dropdowns to consistently float right
+
+    # BFA - auto-keyframe toggle is intentionally on the RIGHT side of the header, not center
+    # Time jump
+    row = layout.row(align=True)
+    row.operator("screen.time_jump", text="", icon='FRAME_PREV').backward = True
+    row.prop(scene, "time_jump_delta", text="")
+    row.operator("screen.time_jump", text="", icon='FRAME_NEXT').backward = False
+    row.popover(panel="TIME_PT_playback_options", text="")
+
+    row = layout.row(align=True)
+
+    row.operator("screen.frame_jump", text="", icon="REW").end = False
+    row.operator("screen.keyframe_jump", text="", icon="PREV_KEYFRAME").next = False
+
+    if not screen.is_animation_playing:
+        # if using JACK and A/V sync:
+        #   hide the play-reversed button
+        #   since JACK transport doesn't support reversed playback
+        if scene and scene.sync_mode == "AUDIO_SYNC" and context.preferences.system.audio_device == "JACK":
+            row.scale_x = 2
+            row.operator("screen.animation_play", text="", icon="PLAY")
+            row.scale_x = 1
+        else:
+            row.operator("screen.animation_play", text="", icon="PLAY_REVERSE").reverse = True
+            row.operator("screen.animation_play", text="", icon="PLAY")
+    else:
+        row.scale_x = 2
+        row.operator("screen.animation_pause", text="", icon='PAUSE')
+        row.scale_x = 1
+
+    row.operator("screen.keyframe_jump", text="", icon="NEXT_KEYFRAME").next = True
+    row.operator("screen.frame_jump", text="", icon="FF").end = True
+    row.operator("screen.animation_cancel", text="", icon="LOOP_BACK").restore_frame = True
+
+    # BFA - removed separator_spacer to center controls better
+
+    if scene:
+        row = layout.row()
+        if scene.show_subframe:
+            row.scale_x = 1.15
+            row.prop(scene, "frame_float", text="")
+        else:
+            row.scale_x = 0.95
+            row.prop(scene, "frame_current", text="")
+
+        # BFA - Frame range controls
+        row = layout.row(align=True)
+        row.prop(scene, "use_preview_range", text="", toggle=True)
+        row.operator("anim.start_frame_set", text="", icon="SET_POSITION")
+        sub = row.row(align=True)
+        sub.scale_x = 0.8
+        if not scene.use_preview_range:
+            sub.prop(scene, "frame_start", text="Start")
+            sub.prop(scene, "frame_end", text="End")
+        else:
+            sub.prop(scene, "frame_preview_start", text="Start")
+            sub.prop(scene, "frame_preview_end", text="End")
+        row.operator("anim.end_frame_set", text="", icon="SET_POSITION")
+
+        # BFA (#6780): "Sync Scene Strip" - opt-in, one-way reconciliation of the
+        # strip's geometry with the strip scene's render range. When the user
+        # changes the scene range from the timeline, the dope-sheet gizmo (which
+        # draws the strip's extent) keeps its old width; this button adopts the
+        # new range into the strip so the gizmo reflects it and subsequent drags
+        # do not "snap". Enabled only while the dope-sheet scene-strip gizmo is
+        # on; greyed out (via the operator poll) when the strip already matches
+        # the range or while a gizmo drag is modal.
+        if is_timeline:
+            row = layout.row(align=True)
+            row.enabled = (
+                getattr(st, "overlays", None) is not None
+                and st.overlays.show_overlays
+                and st.overlays.show_scene_strip_gizmos
+            )
+            row.operator(
+                "action.scene_strip_sync_from_range",
+                text="",
+                icon="FILE_REFRESH",
+            )
+
+        ### Right
+        layout.separator_spacer()
+
+        # BFA - Keyframing controls
+        row = layout.row(align=True)
+        # BFA - NLA uses action.keyframe_insert instead of anim.keyframe_insert
+        if is_nla:
+            row.operator("action.keyframe_insert", text="", icon="KEYFRAMES_INSERT")
+        else:
+            row.operator("anim.keyframe_insert", text="", icon="KEYFRAMES_INSERT")
+        row.operator(
+            "anim.keyframe_delete_v3d", text="", icon="KEYFRAMES_REMOVE"
+        )  # BFA - updated to work like it would in the 3D View (as expected)
+
+        # BFA - Auto keyframing toggle (opens consolidated keyframing settings popover)
+        row.prop(tool_settings, "use_keyframe_insert_auto", text="", toggle=True)
+
+        # BFA - Keying set selector and keyframing settings popover in the same row
+        row.prop_search(scene.keying_sets_all, "active", scene, "keying_sets_all", text="")
+        if tool_settings:
+            icon_keytype = 'KEYTYPE_{:s}_VEC'.format(tool_settings.keyframe_type)
+            row.popover(
+                panel="TIME_PT_keyframing_settings",
+                text="",
+                icon=icon_keytype,
+            )
+
+        # BFA - Grease Pencil mode doesn't need snapping, as it's frame-aligned only
+        if is_timeline:
+            if st.mode != "GPENCIL":
+                row = layout.row(align=True)
+                row.prop(tool_settings, "use_snap_anim", text="")
+                sub = row.row(align=True)
+                sub.popover(
+                    panel="DOPESHEET_PT_snapping",
+                    text="",
+                )
+
+        # BFA - Snap playhead controls (single instance, moved to end)
+        if tool_settings:
+            row = layout.row(align=True)
+            sub = row.row(align=True)
+            sub.prop(tool_settings, "use_snap_playhead", text="")
+            sub.popover(panel="TIME_PT_playhead_snapping", text="")
+
+        if scene:
+            layout.popover(
+                panel="TIME_PT_playback",
+                text="Playback",
+            )
+
+        # BFA - Make this only show in the timeline editor to not show this in the footer.
+        if is_timeline:
+            layout.popover(panel="TIME_PT_view_view_options", text="Options")
+
+        # BFA - Power User Tools insert/remove operators
+        if not is_timeline:
+            wm = context.window_manager
+            if context.preferences.addons.get("bfa_power_user_tools"):
+                row = layout.row(align=True)
+                if wm.BFA_UI_addon_props.BFA_PROP_toggle_insertframes:
+                    row.operator("anim.removeframe_left", text="", icon="PANEL_CLOSE")
+                    row.operator("anim.insertframe_left", text="", icon="TRIA_LEFT")
+
+                if wm.BFA_UI_addon_props.BFA_PROP_toggle_insertframes:
+                    row.operator("anim.insertframe_right", text="", icon="TRIA_RIGHT")
+                    row.operator("anim.removeframe_right", text="", icon="PANEL_CLOSE")
+
+# BFA - Legacy
+
+
+class TIME_MT_editor_menus(bpy.types.Menu):
+    bl_idname = "TIME_MT_editor_menus"
+    bl_label = ""
+
+    def draw(self, context):
+        layout = self.layout
+        horizontal = layout.direction == "VERTICAL"
+        st = context.space_data
+        if horizontal:
+            row = layout.row()
+            sub = row.row(align=True)
+        else:
+            sub = layout
+
+        if horizontal:
+            sub = row.row(align=True)
+
+        sub.menu("TIME_MT_view")
+        if st.show_markers:
+            sub.menu("TIME_MT_marker")
+            sub.menu("DOPESHEET_MT_select")  # BFA
+
+# BFA - Legacy
+
+
+class TIME_MT_marker(bpy.types.Menu):
+    bl_label = "Marker"
+
+    def draw(self, context):
+        layout = self.layout
+
+        marker_menu_generic(layout, context)
+
+
+# BFA - Legacy
+class TIME_MT_view(bpy.types.Menu):
+    bl_label = "View"
+
+    def draw(self, context):
+        layout = self.layout
+
+        scene = context.scene
+        st = context.space_data
+
+        layout.prop(st, "show_region_hud")
+        layout.prop(st, "show_region_channels")
+
+        # BFA - moved below
+        layout.separator()
+        # BFA - these properties were moved to the header options properties
+        layout.operator_context = "INVOKE_REGION_WIN"
+        layout.operator("view2d.zoom_in", icon="ZOOM_IN")
+        layout.operator("view2d.zoom_out", icon="ZOOM_OUT")
+        layout.operator("view2d.zoom_border", text="Zoom Border", icon="ZOOM_BORDER")
+
+        layout.separator()
+
+        # NOTE: "action" now, since timeline is in the dopesheet editor, instead of as own editor
+        layout.operator("action.view_all", icon="VIEWALL")
+        layout.operator("action.view_frame", icon="VIEW_FRAME")
+        if context.scene.use_preview_range:
+            layout.operator("anim.scene_range_frame", text="Frame Preview Range", icon="FRAME_PREVIEW_RANGE")
+        else:
+            layout.operator("anim.scene_range_frame", text="Frame Scene Range", icon="FRAME_SCENE_RANGE")
+
+        layout.separator()
+
+        layout.menu("INFO_MT_area")
+
+
+def marker_menu_generic(layout, context):
+    # layout.operator_context = 'EXEC_REGION_WIN'
+
+    layout.column()
+    layout.operator("marker.add", text="Add Marker", icon="MARKER")
+    layout.operator("marker.duplicate", text="Duplicate Marker", icon="DUPLICATE")
+
+    if len(bpy.data.scenes) > 10:
+        layout.operator_context = "INVOKE_DEFAULT"
+        layout.operator("marker.make_links_scene", text="Duplicate Marker to Scene", icon="OUTLINER_OB_EMPTY")
+    else:
+        layout.operator_menu_enum("marker.make_links_scene", "scene", text="Duplicate Marker to Scene")
+
+    layout.operator("marker.delete", text="Delete Marker", icon="DELETE")
+
+    layout.separator()
+
+    layout.operator("marker.camera_bind", text="Bind Camera to Markers", icon="MARKER_BIND")
+
+    layout.separator()
+
+    props = layout.operator("wm.call_panel", text="Rename Marker", icon="RENAME")
+    props.name = "TOPBAR_PT_name_marker"
+    props.keep_open = False
+    layout.operator("marker.move", text="Move Marker", icon="TRANSFORM_MOVE")
+
+    layout.separator()
+
+    layout.menu("NLA_MT_marker_select")
+
+    layout.separator()
+
+    layout.operator("screen.marker_jump", text="Jump to Next Marker", icon="NEXT_KEYFRAME").next = True
+    layout.operator("screen.marker_jump", text="Jump to Previous Marker", icon="PREV_KEYFRAME").next = False
+
+
+###################################
+
+
+class TimelinePanelButtons:
+    bl_space_type = "DOPESHEET_EDITOR"
+    bl_region_type = "UI"
+
+    @staticmethod
+    def has_timeline(context):
+        return context.space_data.mode == "TIMELINE"
+
+
+class TIME_PT_playback(TimelinePanelButtons, Panel):
+    bl_label = "Playback"
+    bl_region_type = "HEADER"
+    bl_ui_units_x = 13
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = False
+        layout.use_property_decorate = False
+
+        screen = context.screen
+        st = context.space_data
+        is_sequencer = st.type == "SEQUENCE_EDITOR" and st.view_type == "SEQUENCER"
+        scene = context.scene if not is_sequencer else context.sequencer_scene
+
+        # Timeline settings.
+        header, panel = layout.panel("TIME_PT_playback_timeline")
+        header.label(text="Timeline")
+        if panel:
+            panel.prop(scene, "sync_mode", text="Sync")
+
+            col = panel.column(heading="Playback")
+            col.prop(scene, "lock_frame_selection_to_range", text="Limit to Frame Range")
+            row = col.row()
+            row.active = not scene.lock_frame_selection_to_range
+            row.prop(scene, "allow_preroll")
+            col.prop(screen, "use_follow", text="Follow Current Frame")
+
+            col = panel.column()
+            col.prop(scene, "playback_loop_mode", text="Loop")
+            col.separator()
+
+            col = panel.column(heading="Show")
+            col.prop(scene, "show_subframe", text="Subframes")
+
+        # Audio settings.
+        header, panel = layout.panel("TIME_PT_playback_audio")
+        header.label(text="Audio")
+        if panel:
+            col = panel.column()
+            col.prop(scene, "use_audio")
+            col.prop(scene, "use_audio_scrub", text="Scrubbing")
+
+        # Region playback settings.
+        header, panel = layout.panel("TIME_PT_playback_editors", default_closed=True)
+        header.label(text="Editors")
+        if panel:
+            col = panel.column(heading="Play in")  # BFA - capitals on prepositions is bad grammar
+            col.prop(screen, "use_play_top_left_3d_editor", text="Active Editor")
+            col.prop(screen, "use_play_3d_editors", text="3D Viewport")
+            col.prop(screen, "use_play_animation_editors", text="Animation Editors")
+            col.prop(screen, "use_play_image_editors", text="Image Editor")
+            col.prop(
+                screen, "use_play_properties_editors", text="Properties Editor and Sidebars"
+            )  # BFA - changed name, sidebars aren't editors...
+            col.prop(screen, "use_play_clip_editors", text="Movie Clip Editor")
+            col.prop(screen, "use_play_node_editors", text="Node Editors")
+            col.prop(screen, "use_play_sequence_editors", text="Video Sequencer")
+            col.prop(screen, "use_play_spreadsheet_editors", text="Spreadsheet")
+
+        # BFA - Sequencer sub-panel commented out: use_scene_time_sync is already exposed
+        # in the header via playback_controls(), no need to duplicate in popover.
+        # if st.type == 'SEQUENCE_EDITOR':
+        #     header, panel = layout.panel("TIME_PT_playback_sequencer")
+        #     header.label(text="Sequencer")
+        #     if panel:
+        #         col = panel.column(heading="Sync")
+        #         col.prop(context.workspace, "use_scene_time_sync", text="Scene Time")
+
+        # BFA - start/end frame set operators commented out: already in the header with
+        # SET_POSITION icons inline with the frame range fields, no need to duplicate.
+        # layout.separator()
+        # row = layout.row(align=True)
+        # row.operator("anim.start_frame_set")
+        # row.operator("anim.end_frame_set")
+
+
+class TIME_PT_keyframing(TimelinePanelButtons, Panel):
+    bl_label = "Keyframing"
+    bl_region_type = 'HEADER'
+    bl_ui_units_x = 13
+
+    # The actual content is within child sub-panels.
+    def draw(self, _context):
+        pass
+
+# BFA - consolidated keyframing settings into a single popover, instead of multiple sub-panels
+class TIME_PT_keyframing_settings(TimelinePanelButtons, Panel):
+    # BFA - standalone popover, not a child of TIME_PT_keyframing
+    bl_label = "Keyframing Settings"
+    bl_options = {"HIDE_HEADER"}
+    bl_region_type = "HEADER"
+    bl_ui_units_x = 12
+    bl_description = "Active keying set and keyframing settings"
+
+    @classmethod
+    def poll(cls, context):
+        # The keyframe settings are not exposed in the Timeline.
+        st = context.space_data
+        is_sequencer = st.type == "SEQUENCE_EDITOR" and st.view_type == "SEQUENCER"
+        scene = context.scene if not is_sequencer else context.sequencer_scene
+        tool_settings = scene.tool_settings if scene else None
+
+        return tool_settings
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        st = context.space_data
+        is_sequencer = st.type == "SEQUENCE_EDITOR" and st.view_type == "SEQUENCER"
+        scene = context.scene if not is_sequencer else context.sequencer_scene
+        tool_settings = context.tool_settings
+        prefs = context.preferences
+
+        # BFA - keying set search and insert/delete are exposed at the header top level, not here
+
+        # BFA - consolidated auto-keyframing settings (hidden when auto-key is off)
+        # BFA - Use a manual row to avoid property_split label column stealing space from buttons
+        if tool_settings.use_keyframe_insert_auto:
+            col = layout.column(align=True)
+            col.label(text="Auto Keyframing")
+            col.use_property_split = False
+            row = col.row()
+            row.separator()
+            split = row.split(factor=0.3)
+            split.label(text="Mode")
+            split.prop(tool_settings, "auto_keying_mode", text="")
+
+            col.separator()
+            row = col.row()
+            row.separator()
+            row.prop(tool_settings, "use_keyframe_insert_keyingset", text="Only Active Keying Set", icon="KEYINGSET")
+
+        col = layout.column(align=True)
+        col.label(text="Keyframing")
+
+        col.use_property_split = False
+        row = col.row()
+        row.separator()
+        row.label(text="Type")
+        row.prop(tool_settings, "keyframe_type", expand=True, text="")
+
+        if not prefs.edit.use_keyframe_insert_available:
+            row = col.row()
+            row.separator()
+            row.prop(tool_settings, "use_record_with_nla", text="Layered Recording")
+
+        row = col.row()
+        row.separator()
+        row.prop(tool_settings, "use_keyframe_insert_keyingset", text="Only Active Keying Set", toggle=False)
+        row = col.row()
+        row.separator()
+        row.prop(tool_settings, "use_keyframe_cycle_aware")
+
+
+############# Panels in sidebar #########################
+class TIME_PT_view_view_options(TimelinePanelButtons, Panel):
+    bl_label = "View Options"
+    bl_category = "View"
+    bl_space_type = "DOPESHEET_EDITOR"
+    bl_region_type = "HEADER"
+
+    @classmethod
+    def poll(cls, context):
+        # only for timeline editor
+        return cls.has_timeline(context)
+
+    def draw(self, context):
+        sc = context.scene
+        layout = self.layout
+
+        st = context.space_data
+        scene = context.scene
+        tool_settings = context.tool_settings
+
+        col = layout.column()
+
+        col.prop(st.dopesheet, "show_only_errors")
+
+        col.separator()
+
+        col.prop(scene, "show_keys_from_selected_only", text="Only show selected")
+        col.prop(st, "show_seconds")
+        col.prop(st, "show_locked_time")
+
+        col.prop(st, "show_markers")
+        col.prop(tool_settings, "lock_markers")
+
+        col.separator()
+
+        row = layout.row()
+        row.use_property_split = False
+        row.prop(st, "show_cache")
+        row.use_property_split = True
+
+        if st.show_cache:
+            row.label(icon="DISCLOSURE_TRI_DOWN")
+            row = layout.row()
+
+            row.separator()  # indent
+            col = row.column()
+            col.prop(st, "cache_softbody")
+            col.prop(st, "cache_particles")
+            col.prop(st, "cache_cloth")
+            col.prop(st, "cache_simulation_nodes")
+            col.prop(st, "cache_smoke")
+            col.prop(st, "cache_dynamicpaint")
+            col.prop(st, "cache_rigidbody")
+        else:
+            row.label(icon="DISCLOSURE_TRI_RIGHT")
+
+
+class TIME_PT_playback_options(TimelinePanelButtons, Panel):
+    bl_label = "Playback Options"
+    bl_options = {'HIDE_HEADER'}
+    bl_region_type = 'HEADER'
+    bl_ui_units_x = 14
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        st = context.space_data
+        is_sequencer = st.type == 'SEQUENCE_EDITOR' and st.view_type == 'SEQUENCER'
+        scene = context.scene if not is_sequencer else context.sequencer_scene
+
+        layout.prop(scene, "wrap_timeline_navigation", text="Wrap Timeline Navigation")
+        layout.separator()
+        layout.prop(scene, "time_jump_unit", expand=True, text="Jump Unit")
+        # BFA - moved time_jump_delta to top level
+
+
+###################################
+
+classes = (
+    TIME_MT_editor_menus,  # BFA - Legacy
+    TIME_MT_marker,  # BFA - Legacy
+    TIME_MT_view,  # BFA - Legacy
+    TIME_PT_playback,
+    TIME_PT_keyframing,
+    TIME_PT_keyframing_settings,
+    TIME_PT_view_view_options,  # BFA - menu
+    TIME_PT_playback_options,
+    TIME_PT_playhead_snapping,
+)
+
+if __name__ == "__main__":  # only for live edit.
+    from bpy.utils import register_class
+
+    for cls in classes:
+        register_class(cls)

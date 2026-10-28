@@ -1,0 +1,593 @@
+# SPDX-FileCopyrightText: 2009-2023 Blender Authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+import bpy
+from bpy.types import Menu, Panel, UIList
+from bpy.app.translations import contexts as i18n_contexts
+from rna_prop_ui import PropertyPanel
+from bpy_extras.node_utils import find_node_input
+
+from bl_ui.space_properties import PropertiesAnimationMixin
+
+
+class MATERIAL_MT_context_menu(Menu):
+    bl_label = "Material Specials"
+
+    def draw(self, _context):
+        layout = self.layout
+
+        layout.operator("material.copy", icon='COPYDOWN')
+        layout.operator("object.material_slot_copy", icon='COPYDOWN') # BFA - icon
+        layout.operator("material.paste", icon='PASTEDOWN')
+        layout.operator("object.material_slot_remove_unused", icon='DELETE') # BFA - icon
+        layout.operator("object.material_slot_remove_all", icon='DELETE') # BFA - icon
+
+
+class MATERIAL_UL_matslots(UIList):
+
+    def draw_item(self, _context, layout, _data, item, icon, _active_data, _active_propname, _index):
+        # assert(isinstance(item, bpy.types.MaterialSlot)
+        # ob = data
+        slot = item
+        ma = slot.material
+
+        layout.context_pointer_set("id", ma)
+        layout.context_pointer_set("material_slot", slot)
+
+        if ma:
+            if bpy.context.preferences.disable_material_icon: # bfa - just show material icon when enabled.
+                layout.prop(ma, "name", text="", emboss=False, icon="MATERIAL")
+            else:
+                layout.prop(ma, "name", text="", emboss=False, icon_value=icon)
+        else:
+            layout.label(text="", icon_value=icon)
+
+
+class MaterialButtonsPanel:
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "material"
+    # COMPAT_ENGINES must be defined in each subclass, external engines can add themselves here
+
+    @classmethod
+    def poll(cls, context):
+        mat = context.material
+        return mat and (context.engine in cls.COMPAT_ENGINES) and not mat.grease_pencil
+
+
+class MATERIAL_PT_preview(MaterialButtonsPanel, Panel):
+    bl_label = "Preview"
+    bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_EEVEE'}
+
+    def draw(self, context):
+        self.layout.template_preview(context.material)
+
+
+class MATERIAL_PT_custom_props(MaterialButtonsPanel, PropertyPanel, Panel):
+    COMPAT_ENGINES = {
+        'BLENDER_RENDER',
+        'BLENDER_EEVEE',
+        'BLENDER_WORKBENCH',
+    }
+    _context_path = "material"
+    _property_type = bpy.types.Material
+
+
+class EEVEE_MATERIAL_PT_context_material(MaterialButtonsPanel, Panel):
+    bl_label = ""
+    bl_context = "material"
+    bl_options = {'HIDE_HEADER'}
+    COMPAT_ENGINES = {
+        'BLENDER_EEVEE',
+        'BLENDER_WORKBENCH',
+    }
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.object
+        mat = context.material
+
+        if mat and mat.grease_pencil:
+            return False
+        if ob and ob.type == 'GREASEPENCIL':
+            return False
+
+        return (
+            (ob or mat) and
+            (context.engine in cls.COMPAT_ENGINES)
+        )
+
+    def draw(self, context):
+        layout = self.layout
+
+        mat = context.material
+        ob = context.object
+        slot = context.material_slot
+        space = context.space_data
+
+        # BFA - no remove in edit mode
+        obj = context.active_object
+        object_mode = 'OBJECT' if obj is None else obj.mode
+
+        if ob:
+            is_sortable = len(ob.material_slots) > 1
+            rows = 3
+            if is_sortable:
+                rows = 5
+
+            row = layout.row()
+
+            row.template_list("MATERIAL_UL_matslots", "", ob, "material_slots", ob, "active_material_index", rows=rows)
+
+            col = row.column(align=True)
+            col.operator("object.material_slot_add", icon='ADD', text="")
+
+            # BFA - no remove in edit mode
+            sub = col.column()
+            sub.active = (object_mode != 'EDIT')
+            sub.operator("object.material_slot_remove", icon='REMOVE', text="")
+
+            col.separator()
+
+            col.menu("MATERIAL_MT_context_menu", icon='DOWNARROW_HLT', text="")
+
+            if is_sortable:
+                col.separator()
+
+                col.operator("object.material_slot_move", icon='TRIA_UP', text="").direction = 'UP'
+                col.operator("object.material_slot_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
+
+        row = layout.row()
+
+        if ob:
+            row.template_ID(ob, "active_material", new="material.new")
+
+            if slot:
+                row.prop(slot, "link", icon_only=True)
+
+            if ob.mode == 'EDIT':
+                row = layout.row(align=True)
+                row.operator("object.material_slot_assign", text="Assign", icon='CHECKMARK') # BFA - icon   
+                if ob.type != 'FONT':
+                        row.operator("object.material_slot_select", text="Select", icon='RESTRICT_SELECT_OFF') # BFA - icon
+                        row.operator("object.material_slot_deselect", text="Deselect", icon='RESTRICT_SELECT_ON') # BFA - icon
+            
+            # BFA - Open Shader Editor
+            if mat:
+                col = layout.column(align=True)
+                col.separator()
+                col.operator("material.open_node_editor", icon='NODE_MATERIAL')
+                
+        elif mat:
+            row.template_ID(space, "pin_id")
+
+
+def panel_node_draw(layout, ntree, _output_type, input_name):
+    node = ntree.get_output_node('EEVEE')
+
+    if node:
+        input = find_node_input(node, input_name)
+        if input:
+            layout.template_node_view(ntree, node, input)
+        else:
+            layout.label(text="Incompatible output node")
+    else:
+        layout.label(text="No output node")
+
+
+class EEVEE_MATERIAL_PT_surface(MaterialButtonsPanel, Panel):
+    bl_label = "Surface"
+    bl_context = "material"
+    COMPAT_ENGINES = {'BLENDER_EEVEE'}
+
+    def draw(self, context):
+        layout = self.layout
+
+        mat = context.material
+
+        layout.use_property_split = True
+        panel_node_draw(layout, mat.node_tree, 'OUTPUT_MATERIAL', "Surface")
+
+
+class EEVEE_MATERIAL_PT_volume(MaterialButtonsPanel, Panel):
+    bl_label = "Volume"
+    bl_translation_context = i18n_contexts.id_id
+    bl_context = "material"
+    bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_EEVEE'}
+
+    @classmethod
+    def poll(cls, context):
+        engine = context.engine
+        mat = context.material
+        return mat and (engine in cls.COMPAT_ENGINES) and not mat.grease_pencil
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.use_property_split = True
+
+        mat = context.material
+
+        panel_node_draw(layout, mat.node_tree, 'OUTPUT_MATERIAL', "Volume")
+
+
+class EEVEE_MATERIAL_PT_displacement(MaterialButtonsPanel, Panel):
+    bl_label = "Displacement"
+    bl_context = "material"
+    bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_EEVEE'}
+
+    @classmethod
+    def poll(cls, context):
+        engine = context.engine
+        mat = context.material
+        return mat and (engine in cls.COMPAT_ENGINES) and not mat.grease_pencil
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.use_property_split = True
+
+        mat = context.material
+
+        panel_node_draw(layout, mat.node_tree, 'OUTPUT_MATERIAL', "Displacement")
+
+
+class EEVEE_MATERIAL_PT_thickness(MaterialButtonsPanel, Panel):
+    bl_label = "Thickness"
+    bl_translation_context = i18n_contexts.id_material
+    bl_context = "material"
+    bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_EEVEE'}
+
+    @classmethod
+    def poll(cls, context):
+        engine = context.engine
+        mat = context.material
+        return mat and (engine in cls.COMPAT_ENGINES) and not mat.grease_pencil
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.use_property_split = True
+
+        mat = context.material
+
+        panel_node_draw(layout, mat.node_tree, 'OUTPUT_MATERIAL', "Thickness")
+
+
+# BFA - this has been heavily modified to have labels and indents
+def draw_material_surface_settings(layout, mat, is_eevee=True):
+        col = layout.column()
+        col.label(text="Backface Culling")
+        col.use_property_split = False
+
+        row = col.row()
+        row.separator()
+        row.prop(mat, "use_backface_culling", text="Camera")
+        row = col.row()
+        row.separator()
+        row.prop(mat, "use_backface_culling_shadow", text="Shadow")
+        # UPBGE
+        row = col.row()
+        row.separator()
+        row.prop(mat, "use_backface_culling_lightprobe_volume", text="Light Probe Volume")
+
+        col = layout.column()
+        col.label(text="Displacement")
+        col.use_property_split = False
+
+        row = col.row()
+        row.separator()
+        row.prop(mat, "displacement_method", text="Method")
+
+        # NOTE: "max_vertex_displacement" also drives the max offset when using Shadow Raycast with a custom Position.
+        row = col.row()
+        row.separator()
+        max_diplacement_text = "Max Distance" if is_eevee else "Max Displacement"
+        row.enabled = mat.displacement_method != 'BUMP' or is_eevee
+        row.prop(mat, "max_vertex_displacement", text=max_diplacement_text)
+
+        if mat.displacement_method == 'DISPLACEMENT':
+            row = col.row()
+            row.separator()
+            row.label(text="Unsupported displacement method", icon='STATUS_ERROR')
+
+        col = layout.column()
+        col.label(text="Transparency")
+        col.use_property_split = False
+
+        row = col.row()
+        row.separator()
+        row.prop(mat, "use_transparent_shadow")
+
+        row = col.row()
+        row.separator()
+        row.prop(mat, "surface_render_method", text="Method")
+
+        row = col.row()
+        row.separator()
+        if mat.surface_render_method == 'BLENDED':
+            row.prop(mat, "use_transparency_overlap", text="Transparency Overlap")
+        elif mat.surface_render_method == 'DITHERED':
+            row.prop(mat, "use_raytrace_refraction", text="Raytraced Transmission")
+
+        if mat.surface_render_method == 'DITHERED':
+            row = col.row()
+            row.separator()
+            row.prop(mat, "use_thickness_from_shadow", text="From Shadow")
+
+        col = layout.column()
+        col.use_property_split = False
+        col.label(text="Render")
+
+        row = col.row()
+        row.separator()
+        row.prop(mat, "thickness_mode", text="Thickness")
+
+        col = layout.column()
+        col.use_property_split = False
+        col.label(text="Light Probe Volume")
+        row = col.row()
+        row.separator()
+        row.prop(mat, "use_backface_culling_lightprobe_volume", text="Light Probe Volume Backfaces") #BFA - made this explicit
+
+
+
+def draw_material_volume_settings(layout, mat, is_eevee=True):
+    layout.prop(mat, "volume_intersection_method", text="Intersection" if is_eevee else "Volume Intersection")
+
+
+def draw_material_settings(self, context):
+    layout = self.layout
+    layout.use_property_split = True
+    layout.use_property_decorate = False
+
+    mat = context.material
+
+    draw_material_surface_settings(layout, mat, False)
+    draw_material_volume_settings(layout, mat, False)
+
+
+class EEVEE_MATERIAL_PT_viewport_settings(MaterialButtonsPanel, Panel):
+    bl_label = "Settings"
+    bl_context = "material"
+    bl_parent_id = "MATERIAL_PT_viewport"
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
+
+    def draw(self, context):
+        draw_material_settings(self, context)
+
+
+class EEVEE_MATERIAL_PT_settings(MaterialButtonsPanel, Panel):
+    bl_label = "Settings"
+    bl_context = "material"
+    COMPAT_ENGINES = {'BLENDER_EEVEE'}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        mat = context.material
+
+        layout.prop(mat, "pass_index")
+
+
+class EEVEE_MATERIAL_PT_settings_surface(MaterialButtonsPanel, Panel):
+    bl_label = "Surface"
+    bl_context = "material"
+    bl_parent_id = "EEVEE_MATERIAL_PT_settings"
+    COMPAT_ENGINES = {'BLENDER_EEVEE'}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        mat = context.material
+
+        '''
+        col = layout.column()
+        col.label(text="Backface Culling")
+        col.use_property_split = False
+        row = col.row()
+        row.separator()
+        row.prop(mat, "use_backface_culling", text="Camera")
+        row = col.row()
+        row.separator()
+        row.prop(mat, "use_backface_culling_shadow", text="Shadow")
+        # UPBGE
+        row = col.row()
+        row.separator()
+        row.prop(mat, "use_backface_culling_lightprobe_volume", text="Light Probe Volume")
+
+        col = layout.column(align=True)
+        col.prop(mat, "displacement_method", text="Displacement")
+        col = col.column(align=True)
+        col.enabled = mat.displacement_method != 'BUMP'
+        col.prop(mat, "max_vertex_displacement", text="Max Distance")
+
+        if mat.displacement_method == 'DISPLACEMENT':
+            layout.label(text="Unsupported displacement method", icon='ERROR')
+
+        layout.use_property_split = False
+        layout.prop(mat, "use_transparent_shadow")
+        layout.use_property_split = True
+
+        col = layout.column()
+        col.prop(mat, "surface_render_method", text="Render Method")
+        col.use_property_split = False
+        row = col.row()
+        row.separator()
+        if mat.surface_render_method == 'BLENDED':
+            col.prop(mat, "use_transparency_overlap", text="Transparency Overlap")
+        elif mat.surface_render_method == 'DITHERED':
+            col.prop(mat, "use_raytrace_refraction", text="Raytraced Transmission")
+
+        col = layout.column()
+        col.use_property_split = False
+        col.prop(mat, "thickness_mode", text="Thickness")
+        if mat.surface_render_method == 'DITHERED':
+            col.prop(mat, "use_thickness_from_shadow", text="From Shadow")
+
+        col = layout.column()
+        col.use_property_split = False
+        col.label(text="Light Probe Volume")
+        row = col.row()
+        row.separator()
+        row.prop(mat, "use_backface_culling_lightprobe_volume", text="Light Probe Volume Backfaces") #BFA - made this explicit
+        '''
+        draw_material_surface_settings(layout, mat)
+
+class EEVEE_MATERIAL_PT_settings_volume(MaterialButtonsPanel, Panel):
+    bl_label = "Volume"
+    bl_context = "material"
+    bl_parent_id = "EEVEE_MATERIAL_PT_settings"
+    COMPAT_ENGINES = {'BLENDER_EEVEE'}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        mat = context.material
+
+        layout.prop(mat, "volume_intersection_method", text="Intersection")
+
+        #draw_material_volume_settings(layout, mat) # BFA - exposed to top level
+
+
+class MATERIAL_PT_viewport(MaterialButtonsPanel, Panel):
+    bl_label = "Viewport Display"
+    bl_context = "material"
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_order = 10
+
+    @classmethod
+    def poll(cls, context):
+        mat = context.material
+        return mat and not mat.grease_pencil
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+
+        mat = context.material
+
+        col = layout.column()
+        col.prop(mat, "diffuse_color", text="Color")
+        col.prop(mat, "metallic")
+        col.prop(mat, "roughness")
+
+
+class MATERIAL_PT_lineart(MaterialButtonsPanel, Panel):
+    bl_label = "Line Art"
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_order = 10
+
+    @classmethod
+    def poll(cls, context):
+        mat = context.material
+        return mat and not mat.grease_pencil
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = False
+
+        mat = context.material
+        lineart = mat.lineart
+
+        row = layout.row() # BFA
+        split = row.split(factor=0.4)
+        row = split.row()
+        row.prop(lineart, "use_material_mask", text="Material Mask")
+        row = split.row()
+        if lineart.use_material_mask:
+            row.label(icon='DISCLOSURE_TRI_DOWN')
+        else:
+            row.label(icon='DISCLOSURE_TRI_RIGHT')
+        row = split.row()
+        row.alignment = 'RIGHT'
+        row.prop_decorator(lineart, "use_material_mask")
+
+        layout.use_property_split = True
+
+        col = layout.column(align=True)
+        if lineart.use_material_mask: # BFA
+            row = col.row(align=True, heading="      Masks")
+            for i in range(8):
+                row.prop(lineart, "use_material_mask_bits", text=str(i),
+                         index=i, toggle=True)  # bfa - labels on the maks bits
+                if i == 3:
+                    row = col.row(align=True)
+
+        row = layout.row(align=True, heading="Custom Occlusion")
+        row.prop(lineart, "mat_occlusion", text="Levels")
+
+        col = layout.column() # BFA
+        split = col.split(factor=.4)
+        split.use_property_split = False
+        split.prop(lineart, "use_intersection_priority_override", text="Intersection Priority")
+
+        split.alignment = 'LEFT'
+        if lineart.use_intersection_priority_override:
+            row = split.row()
+            row.prop(lineart, "intersection_priority", text="")
+            row.prop_decorator(lineart, "intersection_priority")
+        else:
+            split.label(icon='DISCLOSURE_TRI_RIGHT')
+
+
+class MATERIAL_PT_animation(MaterialButtonsPanel, Panel, PropertiesAnimationMixin):
+    COMPAT_ENGINES = {
+        'BLENDER_RENDER',
+        'BLENDER_EEVEE',
+        'BLENDER_WORKBENCH',
+    }
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        # MaterialButtonsPanel.poll ensures this is not None.
+        material = context.material
+
+        col = layout.column(align=True)
+        col.label(text="Material")
+        self.draw_action_and_slot_selector(context, col, material)
+
+        if node_tree := material.node_tree:
+            col = layout.column(align=True)
+            col.label(text="Shader Node Tree")
+            self.draw_action_and_slot_selector(context, col, node_tree)
+
+
+classes = (
+    MATERIAL_MT_context_menu,
+    MATERIAL_UL_matslots,
+    MATERIAL_PT_preview,
+    EEVEE_MATERIAL_PT_context_material,
+    EEVEE_MATERIAL_PT_surface,
+    EEVEE_MATERIAL_PT_volume,
+    EEVEE_MATERIAL_PT_displacement,
+    EEVEE_MATERIAL_PT_thickness,
+    EEVEE_MATERIAL_PT_settings,
+    EEVEE_MATERIAL_PT_settings_surface,
+    EEVEE_MATERIAL_PT_settings_volume,
+    MATERIAL_PT_lineart,
+    MATERIAL_PT_viewport,
+    EEVEE_MATERIAL_PT_viewport_settings,
+    MATERIAL_PT_animation,
+    MATERIAL_PT_custom_props,
+)
+
+
+if __name__ == "__main__":  # only for live edit.
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)
