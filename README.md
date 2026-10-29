@@ -1,8 +1,6 @@
-![](doc/readme/GitHub_Readme1.png)
-
 # Blender for Gamedevs
 
-> ### <img src="doc/readme/ai_modified_badge.png" height="32" alt="AI MODIFIED"/>
+> ### 🤖 **AI Modified**
 > *This repository utilizes AI assistance to harmonize and port UPBGE into Bforartists. **All AI-assisted modifications are strictly scoped and demarcated within dedicated comment blocks** across the codebase.*
 
 > ### $\color{red}\textsf{\textbf{Experimental}}$
